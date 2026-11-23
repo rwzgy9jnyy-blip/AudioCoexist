@@ -2,6 +2,7 @@ name: Host tests
 
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
 
@@ -10,8 +11,12 @@ permissions:
 
 jobs:
   policy:
-    runs-on: macos-latest
+    # The default ARM pool can time out before acquiring a runner.
+    runs-on: macos-15-intel
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Test session policy and hooks with sanitizers
+      - name: Test production server and CLI with ASan and UBSan
         run: bash test.sh
+      - name: Check concurrency with ThreadSanitizer
+        run: ASC_SANITIZERS=thread bash test.sh

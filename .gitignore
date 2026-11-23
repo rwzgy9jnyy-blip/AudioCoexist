@@ -2,6 +2,7 @@
 .theos/
 packages/
 tests/build/
+__pycache__/
 checks/
 *.log
 *.sessions

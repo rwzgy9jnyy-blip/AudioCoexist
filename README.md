@@ -9,6 +9,8 @@
 
 [下载 0.2.4 安装包](https://github.com/rwzgy9jnyy-blip/AudioCoexist/releases/tag/v0.2.4) · [English](README.en.md)
 
+`main` 当前为 **0.2.5 修复候选版**，已通过宿主机测试、并发检测和 RootHide 构建，尚未完成新构建的实机复测。[候选包](https://github.com/rwzgy9jnyy-blip/AudioCoexist/releases/tag/v0.2.5) · [修复记录](CHANGELOG.md)。0.2.4 保留为已有实机反馈的版本。
+
 ## 兼容范围
 
 | 项目 | 当前范围 |
@@ -22,7 +24,7 @@
 
 ## 工作方式
 
-插件检查 `MXCoreSession` 所需方法的运行时签名，然后 Hook 三个读取方法：
+插件检查 `MXCoreSession` 所需方法的运行时签名，然后 Hook 三个读取方法；全部安装完成后才启用混音策略，部分安装失败时保持原行为：
 
 - `mixesWithEveryone`
 - `interruptionStyle`
@@ -71,7 +73,9 @@ audio-coexist dump        # 请求会话诊断快照
 | `/tmp/AudioCoexistServer.runtime` | Hook 加载标记及有限条策略修改日志 |
 | `/tmp/AudioCoexistServer.sessions` | `dump` 生成的会话元数据 |
 
-诊断只记录 App 标识和音频会话属性，不采集录音内容；日志可能含使用中的 App 信息，提交 Issue 前请自行删去私密信息。`dump` 返回只表示请求已发出，需查看快照确认服务响应。
+配置支持布尔值、数字及 `true/false`、`yes/no`、`1/0` 字符串，异常类型按缺省值处理。命令行使用文件锁和原子替换，避免同时修改开关时丢失更新。
+
+诊断只记录 App 标识和音频会话属性，不采集录音内容；日志可能含使用中的 App 信息，提交 Issue 前请自行删去私密信息。0.2.5 将诊断写盘移至独立队列，文件权限收紧至 `0600`；使用 root 读取。`dump` 返回只表示请求已发出，需查看快照确认服务响应；不可用的诊断属性标为 `-1`，接口不兼容时输出 `unavailable`。
 
 ## 构建
 
@@ -91,7 +95,9 @@ bash build.sh
 
 ## 验证范围
 
-`bash test.sh` 在 macOS 上通过模拟会话验证资格筛选、三个 Hook 及原始值保留，启用 AddressSanitizer、UndefinedBehaviorSanitizer 和警告即错误。当前为 **972 项断言**；GitHub Actions 执行同一测试。宿主机测试不能代替真实设备音频验证。
+`bash test.sh` 在 macOS 上编译实际生产代码，仅用测试替身替换 RootHide 路径、Substrate 方法替换和私有类查找，不再排除初始化、配置及诊断代码。当前覆盖 **569 项生产代码断言**和 **5 组独立 CLI 进程集成测试**，包括 20 轮并发修改、异常配置、诊断 ABI 不匹配和部分 Hook 失败。
+
+默认启用 AddressSanitizer、UndefinedBehaviorSanitizer 和警告即错误；另可运行 `ASC_SANITIZERS=thread bash test.sh` 检测并发。GitHub Actions 执行两种检测。测试替身不能证明真实 Substrate/ElleKit 加载、设备线程规则或实际音频行为；实机验证仍单独进行。
 
 0.2.4 已有以下实机使用反馈：
 
@@ -107,6 +113,8 @@ bash build.sh
 | --- | --- |
 | [Server.mm](Server.mm) | 系统服务 Hook、运行时检查、配置和诊断 |
 | [Policy.h](Policy.h) | 会话资格规则 |
+| [Settings.h](Settings.h) | 共用配置解析与开关快照 |
+| [FileIO.h](FileIO.h) | 原子写入与文件类型、权限处理 |
 | [Control.m](Control.m) | 设备端命令行控制 |
 | [AudioCoexistServer.plist](AudioCoexistServer.plist) | 仅 `audiomxd` 的注入过滤器 |
 | [tests/server.mm](tests/server.mm) | 宿主机策略与 Hook 测试 |
