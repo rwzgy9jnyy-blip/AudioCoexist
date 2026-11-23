@@ -9,7 +9,7 @@
 
 [下载 0.2.4 安装包](https://github.com/rwzgy9jnyy-blip/AudioCoexist/releases/tag/v0.2.4) · [English](README.en.md)
 
-`main` 当前为 **0.2.5 修复候选版**，已通过宿主机测试、并发检测和 RootHide 构建，尚未完成新构建的实机复测。[候选包](https://github.com/rwzgy9jnyy-blip/AudioCoexist/releases/tag/v0.2.5) · [修复记录](CHANGELOG.md)。0.2.4 保留为已有实机反馈的版本。
+`main` 当前为 **0.2.5 修复候选版**，已通过宿主机测试、并发检测、RootHide 构建及基础实机复测；长期稳定性仍在观察。[候选包](https://github.com/rwzgy9jnyy-blip/AudioCoexist/releases/tag/v0.2.5) · [修复记录](CHANGELOG.md)。0.2.4 的原安装包继续保留。
 
 ## 兼容范围
 
@@ -99,7 +99,15 @@ bash build.sh
 
 默认启用 AddressSanitizer、UndefinedBehaviorSanitizer 和警告即错误；另可运行 `ASC_SANITIZERS=thread bash test.sh` 检测并发。GitHub Actions 执行两种检测。测试替身不能证明真实 Substrate/ElleKit 加载、设备线程规则或实际音频行为；实机验证仍单独进行。
 
-0.2.4 已有以下实机使用反馈：
+**0.2.5 基础实机复测（2026-11-24）**：iPhone 14 Pro Max / iOS 17.0 / RootHide。安装后已确认新版本加载、Hook 执行和诊断快照正常；微信保持原有 RootHide 黑名单，其他插件保持原状。用户确认：
+
+- 汽水音乐和抖音能够同时出声。
+- 微信录音和录音回放正常。
+- 本次测试暂未出现汽水音乐“不安全”提示。
+
+这次反馈只覆盖上述场景和测试时段，尚不能证明长期不会再次提示或所有 App、路由均兼容；0.2.5 暂保留候选版标记。
+
+0.2.4 的原实机使用反馈：
 
 - 汽水音乐播放时刷抖音，两边同时有声。
 - 微信保持 RootHide 黑名单时，按住语音录音，音乐继续且录音正常。

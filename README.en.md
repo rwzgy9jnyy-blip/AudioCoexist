@@ -4,7 +4,7 @@ A system-service audio coexistence tweak for **iOS 17.0 and a full RootHide jail
 
 [中文文档](README.md) · [Releases](https://github.com/rwzgy9jnyy-blip/AudioCoexist/releases) · [MIT license](LICENSE)
 
-`main` is the **0.2.5 repair candidate**, verified by host tests, concurrency checks and RootHide builds, but not yet retested on a physical device. [Candidate package](https://github.com/rwzgy9jnyy-blip/AudioCoexist/releases/tag/v0.2.5) · [Changelog](CHANGELOG.md). The previously device-tested 0.2.4 release remains available.
+`main` is the **0.2.5 repair candidate**, verified by host tests, concurrency checks, RootHide builds and a basic physical-device retest; long-term observation continues. [Candidate package](https://github.com/rwzgy9jnyy-blip/AudioCoexist/releases/tag/v0.2.5) · [Changelog](CHANGELOG.md). The original 0.2.4 release remains available.
 
 ## Compatibility
 
@@ -75,7 +75,9 @@ Host tests compile the production code, replacing only RootHide paths, Substrate
 
 The default run uses AddressSanitizer, UndefinedBehaviorSanitizer and warnings as errors. Run `ASC_SANITIZERS=thread bash test.sh` for ThreadSanitizer; GitHub Actions runs both. Test doubles do not establish actual Substrate/ElleKit loading, device threading rules or physical-device audio behavior.
 
-Device feedback for 0.2.4 confirmed simultaneous Soda Music/Douyin playback, WeChat voice recording while music continued with WeChat remaining in the RootHide blacklist, and voice playback/app switching without the earlier pauses. Soda Music showed no unsafe-version prompt during the final retest. These observations do not establish compatibility with every app, Bluetooth/AirPlay, call transitions or long-term use.
+**0.2.5 basic device retest, November 24, 2026:** iPhone 14 Pro Max / iOS 17.0 / RootHide. Installation checks confirmed the new version loaded, hooks ran and session diagnostics completed; WeChat's RootHide blacklist setting and other tweaks were preserved. The tester confirmed simultaneous Soda Music/Douyin sound, normal WeChat recording and voice playback, and no unsafe-version prompt during this test so far. This feedback covers only these scenarios and this test period. Long-term behavior, every app and every route remain unproven, so 0.2.5 retains its prerelease designation.
+
+Earlier 0.2.4 feedback confirmed simultaneous Soda Music/Douyin playback, WeChat voice recording while music continued with WeChat remaining in the RootHide blacklist, and voice playback/app switching without the earlier pauses. Soda Music showed no unsafe-version prompt during its final retest. These observations do not establish compatibility with every app, Bluetooth/AirPlay, call transitions or long-term use.
 
 ## Source
 

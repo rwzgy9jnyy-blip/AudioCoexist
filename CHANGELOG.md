@@ -2,7 +2,7 @@
 
 ## 0.2.5 — 修复候选版 / Repair candidate
 
-当前已完成源码测试、静态分析、并发检测及 RootHide 双架构打包；新构建尚未实机复测。
+已完成源码测试、静态分析、并发检测、RootHide 双架构打包及基础实机复测。2026-11-24 在 iPhone 14 Pro Max / iOS 17.0 / RootHide 上，用户确认汽水与抖音同时出声、微信录音和回放正常，测试中暂未出现“不安全”提示。微信黑名单和其他插件保持原状。长期稳定性仍在观察，暂保留候选版标记。
 
 - **初始化并发**：修复 Hook 未全部就绪时已开始混音的问题。原方法指针原子发布，并在替换前准备回退；部分失败保持原行为，防止重复 Hook。
 - **配置异常**：数组、字典等非法布尔值不再触发 `boolValue` 异常；CLI 和系统服务使用同一解析器。两个开关通过单个原子快照更新。
@@ -13,7 +13,7 @@
 - **测试覆盖**：移除将生产初始化、配置和诊断排除在宿主测试之外的分支。测试实际生产实现，包含完整策略真值表、安装失败、异常数据、诊断和独立 CLI 进程并发测试。ASan/UBSan 与 TSan 分别执行。
 - **CI 调度**：改用 Intel macOS 测试机，避开默认 ARM 测试机容量不足造成的获取失败；仅在主分支推送、PR 或手动触发时运行，避免发布标签重复执行。
 
-The 0.2.5 candidate hardens initialization, original-IMP publication, settings parsing, session type checks, diagnostic ABI handling, CLI argument validation/concurrent updates and diagnostic file I/O. Host tests now compile the production initialization/settings/diagnostic paths instead of excluding them. Physical-device retesting is still pending.
+The 0.2.5 candidate hardens initialization, original-IMP publication, settings parsing, session type checks, diagnostic ABI handling, CLI argument validation/concurrent updates and diagnostic file I/O. Host tests now compile the production initialization/settings/diagnostic paths instead of excluding them. A basic iPhone 14 Pro Max / iOS 17.0 / RootHide retest passed on November 24, 2026: simultaneous Soda Music/Douyin sound, normal WeChat recording/playback and no unsafe-version prompt during the test so far. Long-term observation continues; the prerelease designation is retained.
 
 ## 0.2.4
 
