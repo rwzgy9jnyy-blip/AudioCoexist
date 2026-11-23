@@ -1,0 +1,8 @@
+.DS_Store
+.theos/
+packages/
+tests/build/
+checks/
+*.log
+*.sessions
+*.deb
