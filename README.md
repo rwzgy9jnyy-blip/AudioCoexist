@@ -7,9 +7,11 @@
 
 **仅作用于系统音频服务，不向 App 进程注入代码。** 所有符合条件的会话使用同一套规则，没有逐 App 白名单，也不需要修改 IPA 或 RootHide 黑名单。普通未越狱设备上的独立 IPA 无法实现这个系统级功能。
 
-[下载 0.2.4 安装包](https://github.com/rwzgy9jnyy-blip/AudioCoexist/releases/tag/v0.2.4) · [English](README.en.md)
+[下载 0.2.16 候选版](https://github.com/rwzgy9jnyy-blip/AudioCoexist/releases/tag/v0.2.16) · [English](README.en.md)
 
-`main` 当前为 **0.2.5 修复候选版**，已通过宿主机测试、并发检测、RootHide 构建及基础实机复测；长期稳定性仍在观察。[候选包](https://github.com/rwzgy9jnyy-blip/AudioCoexist/releases/tag/v0.2.5) · [修复记录](CHANGELOG.md)。0.2.4 的原安装包继续保留。
+本次源码为 **0.2.16 蓝牙控制修复候选版**，修正全局混音导致媒体控制资格丢失和控制目标争抢的问题，保留 0.2.6 的查询开销优化。已通过宿主机测试、并发检测与 RootHide 构建。此前发布的 [0.2.5 候选包](https://github.com/rwzgy9jnyy-blip/AudioCoexist/releases/tag/v0.2.5) 和 0.2.4 安装包仍保留。[修复记录](CHANGELOG.md)
+
+0.2.6 对系统本来已允许的返回值直接保留，复用中断值和类别，保护会话提前返回；不缓存可变会话资格。插件没有常驻轮询或定时器，诊断扫描仍只在主动 `dump` 时运行。此项减少调用开销，尚不能换算为整机省电百分比。
 
 ## 兼容范围
 
@@ -24,13 +26,18 @@
 
 ## 工作方式
 
-插件检查 `MXCoreSession` 所需方法的运行时签名，然后 Hook 三个读取方法；全部安装完成后才启用混音策略，部分安装失败时保持原行为：
+插件检查 `MXCoreSession` 所需方法的运行时签名，然后 Hook 三个读取方法，并观察播放状态 setter；四项全部就绪才启用策略，部分安装失败时保持原行为：
 
 - `mixesWithEveryone`
 - `interruptionStyle`
 - `allowMixableAudioWhileRecording`
+- `setIsPlayingOutput:`（原样转发参数，仅观察开始出声）
 
-对符合条件的会话返回允许混音的策略，不改写其原始存储值。iOS 17.0 实测中断值 `0x8` 对应独占，`0x10` 对应混音；未知优先级保持系统原行为。
+对符合条件的次路会话返回允许混音的策略，不改写其原始存储值。iOS 17.0 实测中断值 `0x8` 对应独占，`0x10` 对应混音；未知优先级保持系统原行为。
+
+首次开始出声、允许媒体控制且原本独占的普通媒体客户端成为主播放。主播放保留原生混音和中断策略，后来的客户端进入混音；蓝牙、锁屏与控制中心继续走系统原有命令链路，视频不会因共处而被额外赋予媒体控制资格。先播放音乐，再打开视频时，音乐持有主播放角色。
+
+暂停不释放角色，以便蓝牙继续键恢复同一主播放；同一客户端切歌或创建辅助播放会话时共享角色。该客户端最后一个关联播放会话释放后，角色自动结束，下一路开始播放时可接管。切换主播放器时可退出原主播放 App 后再播放新音源。角色由系统会话与进程标识确定，没有 App/耳机名称白名单。没有新增轮询、全会话定时扫描或按键转发。
 
 播放支持 `MediaPlayback`、`Audio/Video`、`AmbientSound`、`SoloAmbientSound`，录音支持 `Record`、`PlayAndRecord*`。默认模式适用；播放另支持 `MoviePlayback`、`SpokenAudio`。媒体共享策略接受默认、长音频、长视频，独立路由不强制修改。
 
@@ -95,9 +102,13 @@ bash build.sh
 
 ## 验证范围
 
-`bash test.sh` 在 macOS 上编译实际生产代码，仅用测试替身替换 RootHide 路径、Substrate 方法替换和私有类查找，不再排除初始化、配置及诊断代码。当前覆盖 **569 项生产代码断言**和 **5 组独立 CLI 进程集成测试**，包括 20 轮并发修改、异常配置、诊断 ABI 不匹配和部分 Hook 失败。
+`bash test.sh` 在 macOS 上编译实际生产代码，仅用测试替身替换 RootHide 路径、Substrate 方法替换和私有类查找，不再排除初始化、配置及诊断代码。覆盖策略真值表、1000 轮快速分支回归及属性读取计数，以及 **5 组独立 CLI 进程集成测试**，包括 20 轮并发修改、异常配置、诊断 ABI 不匹配和部分 Hook 失败。模式和通话保护切换后的规则会重新判断。
 
 默认启用 AddressSanitizer、UndefinedBehaviorSanitizer 和警告即错误；另可运行 `ASC_SANITIZERS=thread bash test.sh` 检测并发。GitHub Actions 执行两种检测。测试替身不能证明真实 Substrate/ElleKit 加载、设备线程规则或实际音频行为；实机验证仍单独进行。
+
+**0.2.16 基础实机复测（2026-11-28）**：iPhone 14 Pro Max / iOS 17.0 / RootHide。宿主机 ASan/UBSan、TSan 与构建检查通过，系统服务稳定运行。测试者确认：先播放汽水，再进入抖音连续滑动多个视频，蓝牙暂停、继续和切歌始终控制汽水，恢复播放后双路声音正常；微信录音取消及已有语音回放时音乐继续，录音和回放均正常。微信黑名单和其他插件保持原状。
+
+主次播放、暂停恢复、切歌/辅助会话替换、最后会话释放和并发争抢有宿主回归检查。这次实机反馈只覆盖上述场景和时段；全部设备、路由及长期运行未穷尽验证，保留候选版标记。
 
 **0.2.5 基础实机复测（2026-11-24）**：iPhone 14 Pro Max / iOS 17.0 / RootHide。安装后已确认新版本加载、Hook 执行和诊断快照正常；微信保持原有 RootHide 黑名单，其他插件保持原状。用户确认：
 

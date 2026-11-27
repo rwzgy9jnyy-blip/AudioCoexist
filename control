@@ -1,6 +1,6 @@
 Package: com.codex.audiocoexistserver
 Name: 音频共处 · 系统服务版
-Version: 0.2.5
+Version: 0.2.16
 Architecture: iphoneos-arm64e
 Description: Audio mixing in audiomxd only. No application hooks. Experimental iOS 17.0 RootHide build.
 Maintainer: Codex

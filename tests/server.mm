@@ -22,7 +22,10 @@ NSString *ASCTestRoot;
 @property(nonatomic,copy) NSString *audioCategory,*audioMode,*displayID;
 @property(nonatomic) bool hasPhoneCallBehavior,isTheAssistant,isHardwareSafetySession,isCarSession,isSharePlayCallSession;
 @property(nonatomic) int routeSharingPolicy;
+@property(nonatomic,strong) NSNumber *clientPID;
+@property(nonatomic) bool isActive,isPlayingOutput;
 @property(nonatomic) bool mixesWithEveryone,allowMixableAudioWhileRecording;
+@property(nonatomic) bool isEligibleForNowPlayingAppConsideration,allowedToBeNowPlayingApp;
 @property(nonatomic) unsigned int interruptionStyle;
 @end
 @implementation ASCTestSession
@@ -54,6 +57,17 @@ static bool throwSnapshot;
 -(bool)isPlaying {return true;}
 @end
 
+static unsigned categoryReads,modeReads,displayReads,styleReads;
+static UIntGetter savedStyleGetter;
+static unsigned int countedStyle(id session,SEL selector){++styleReads;return savedStyleGetter(session,selector);}
+@interface ASCTestCountingSession : ASCTestSession
+@end
+@implementation ASCTestCountingSession
+-(NSString *)audioCategory{++categoryReads;return [super audioCategory];}
+-(NSString *)audioMode{++modeReads;return [super audioMode];}
+-(NSString *)displayID{++displayReads;return [super displayID];}
+@end
+
 static std::atomic_uint checks(0);
 static unsigned hookCalls, failHook;
 static ASCTestSession *probe;
@@ -66,13 +80,12 @@ void MSHookMessageEx(Class cls,SEL selector,IMP replacement,IMP *original) {
     std::thread caller([]{
         @autoreleasepool {
             CHECK(!initialized.load());CHECK(!probe.mixesWithEveryone);
-            CHECK(probe.interruptionStyle==0x8);CHECK(!probe.allowMixableAudioWhileRecording);
+            CHECK(probe.interruptionStyle==0x8);CHECK(!probe.allowMixableAudioWhileRecording);CHECK(!probe.isActive);
         }
     });
     caller.join();
     *original=hookCalls==failHook ? nullptr : previous;
 }
-
 static int wrongCategory(id,SEL) {return 0;}
 static void flushDiagnostics(void) {dispatch_sync(diagnosticQueue(),^{});}
 static void setFlags(unsigned flags) {settingsFlags.store(flags);}
@@ -146,6 +159,76 @@ static void testSettings(void) {
     writer.join();CHECK(!bad.load());setFlags(ASCDefaults);
 }
 
+static ASCTestSession *mediaSession(int pid) NS_RETURNS_RETAINED;
+static ASCTestSession *mediaSession(int pid) {
+    ASCTestSession *s=[ASCTestSession new];s.audioCategory=@"MediaPlayback";s.audioMode=@"Default";
+    s.displayID=@"arbitrary.client";s.interruptionStyle=0x8;s.clientPID=@(pid);
+    s.isEligibleForNowPlayingAppConsideration=true;return s;
+}
+static void testPrimaryOwnership(void) {
+    primaryStamp.store(0);
+    @autoreleasepool {
+        ASCTestSession *first=mediaSession(101),*second=mediaSession(202);
+        CHECK(first.interruptionStyle==0x8);CHECK(!first.mixesWithEveryone);
+        first.isPlayingOutput=true;CHECK((unsigned)primaryStamp.load()==101);CHECK(first.isPlayingOutput);
+        CHECK(first.interruptionStyle==0x8);CHECK(!first.mixesWithEveryone);
+        second.isPlayingOutput=true;CHECK((unsigned)primaryStamp.load()==101);CHECK(second.isPlayingOutput);
+        CHECK(second.interruptionStyle==0x10);CHECK(second.mixesWithEveryone);
+        first.isPlayingOutput=false;CHECK((unsigned)primaryStamp.load()==101);CHECK(!first.isPlayingOutput);
+        CHECK(first.interruptionStyle==0x8);CHECK(second.interruptionStyle==0x10);
+        first.isPlayingOutput=true;CHECK((unsigned)primaryStamp.load()==101);
+        ASCTestSession *successor=mediaSession(101);successor.isPlayingOutput=true;
+        uint64_t stamp=primaryStamp.load();first=nil;CHECK(primaryStamp.load()==stamp);
+        setFlags(0);CHECK(second.interruptionStyle==0x8);CHECK(!second.mixesWithEveryone);setFlags(ASCDefaults);
+        second.audioMode=@"VoiceChat";CHECK(second.interruptionStyle==0x8);second.audioMode=@"Default";
+        ASCTestSession *auxiliary=mediaSession(101);auxiliary.isPlayingOutput=true;
+        auxiliary=nil;CHECK((unsigned)primaryStamp.load()==101);
+        successor=nil;CHECK(primaryStamp.load()==0);
+        second.isPlayingOutput=true;CHECK((unsigned)primaryStamp.load()==202);CHECK(second.interruptionStyle==0x8);
+        second=nil;CHECK(primaryStamp.load()==0);
+        ASCTestSession *excluded=mediaSession(303);excluded.hasPhoneCallBehavior=true;
+        excluded.isPlayingOutput=true;CHECK(primaryStamp.load()==0);CHECK(excluded.isPlayingOutput);
+        excluded.hasPhoneCallBehavior=false;excluded.isEligibleForNowPlayingAppConsideration=false;
+        excluded.isPlayingOutput=true;CHECK(primaryStamp.load()==0);
+        excluded.isEligibleForNowPlayingAppConsideration=true;excluded.mixesWithEveryone=true;
+        excluded.isPlayingOutput=true;CHECK(primaryStamp.load()==0);
+    }
+    CHECK(primaryStamp.load()==0);
+    for(int round=0;round<16;round++){
+        @autoreleasepool {
+            ASCTestSession *left=mediaSession(401),*right=mediaSession(402);
+            std::thread a([&]{@autoreleasepool{claimPrimary(left);}});
+            std::thread b([&]{@autoreleasepool{claimPrimary(right);}});
+            a.join();b.join();unsigned owner=(unsigned)primaryStamp.load();
+            CHECK(owner==401 || owner==402);
+            CHECK((left.interruptionStyle==0x8)!=(right.interruptionStyle==0x8));
+            left=nil;right=nil;CHECK(primaryStamp.load()==0);
+        }
+    }
+    primaryStamp.store(99);
+}
+
+static void testHotPath(void) {
+    ASCTestCountingSession *s=[ASCTestCountingSession new];
+    s.audioCategory=@"MediaPlayback";s.audioMode=@"Default";s.displayID=@"test.client";s.clientPID=@123;
+    savedStyleGetter=originalInterruption.load();originalInterruption.store(countedStyle);
+    s.mixesWithEveryone=true;s.interruptionStyle=0x10;s.allowMixableAudioWhileRecording=true;
+    categoryReads=modeReads=displayReads=styleReads=0;
+    for(int i=0;i<1000;i++){
+        CHECK(s.mixesWithEveryone);CHECK(s.interruptionStyle==0x10);CHECK(s.allowMixableAudioWhileRecording);
+    }
+    CHECK(categoryReads==0);CHECK(modeReads==0);CHECK(displayReads==0);CHECK(styleReads==1000);
+    s.mixesWithEveryone=false;s.interruptionStyle=0x8;s.allowMixableAudioWhileRecording=false;
+    categoryReads=modeReads=displayReads=styleReads=0;
+    CHECK(s.interruptionStyle==0x10);CHECK(styleReads==1);CHECK(categoryReads==1);
+    s.audioCategory=@"Record";categoryReads=styleReads=0;
+    CHECK(s.allowMixableAudioWhileRecording);CHECK(categoryReads==1);CHECK(styleReads==1);
+    // Eligibility must be re-evaluated after mode/protection changes: no cache.
+    s.audioMode=@"VoiceChat";CHECK(!s.allowMixableAudioWhileRecording);CHECK(s.interruptionStyle==0x8);
+    s.audioMode=@"Default";s.hasPhoneCallBehavior=true;CHECK(!s.allowMixableAudioWhileRecording);CHECK(s.interruptionStyle==0x8);
+    originalInterruption.store(savedStyleGetter);
+}
+
 static void testDiagnostics(ASCTestSession *s) {
     snapshotValue=@[s,@"other object"];
     NSString *snapshot=sessionSnapshot();CHECK([snapshot containsString:@"sessions=2"]);
@@ -183,19 +266,19 @@ int main(int argc,char **argv){@autoreleasepool{
         CHECK([NSFileManager.defaultManager createDirectoryAtPath:jbroot(path) withIntermediateDirectories:YES attributes:nil error:nil]);
     mappedCoreClass=ASCTestSession.class;mappedManagerClass=ASCTestManager.class;
     probe=[ASCTestSession new];probe.audioCategory=@"MediaPlayback";probe.audioMode=@"Default";
-    probe.displayID=@"test.client";probe.interruptionStyle=0x8;
+    probe.displayID=@"test.client";probe.interruptionStyle=0x8;probe.clientPID=@123;
     bool failure=argc==2&&strcmp(argv[1],"--hook-failure")==0;
     if(failure)failHook=2;
     CHECK([sessionSnapshot() containsString:@"not ready"]);
     Class bad=objc_allocateClassPair(ASCTestSession.class,"ASCInvalidSessionABI",0);
     CHECK(class_addMethod(bad,@selector(audioCategory),(IMP)wrongCategory,"i@:"));objc_registerClassPair(bad);
     mappedCoreClass=bad;installServerHooks();CHECK(!initialized.load());CHECK(hookCalls==0);
-    mappedCoreClass=ASCTestSession.class;installServerHooks();CHECK(hookCalls==3);
-    installServerHooks();CHECK(hookCalls==3);
+    mappedCoreClass=ASCTestSession.class;installServerHooks();CHECK(hookCalls==4);
+    installServerHooks();CHECK(hookCalls==4);
     for(int i=0;i<100;i++)imageAdded(nullptr,0);
-    flushDiagnostics();CHECK(hookCalls==3);CHECK(!installPending.load());
+    flushDiagnostics();CHECK(hookCalls==4);CHECK(!installPending.load());
     if(failure){CHECK(!initialized.load());CHECK(!probe.mixesWithEveryone);CHECK(probe.interruptionStyle==0x8);}
-    else {CHECK(initialized.load());testPolicy(probe);testSettings();testDiagnostics(probe);}
+    else {CHECK(initialized.load());primaryStamp.store(99);testPolicy(probe);testSettings();testHotPath();testPrimaryOwnership();testDiagnostics(probe);}
     CFNotificationCenterRemoveEveryObserver(CFNotificationCenterGetDarwinNotifyCenter(),nullptr);
     flushDiagnostics();CHECK([NSFileManager.defaultManager removeItemAtPath:ASCTestRoot error:nil]);
     printf("PASS: %u production server assertions (%s)\n",checks.load(),failure?"partial hook failure":"policy, settings, diagnostics, concurrency");
